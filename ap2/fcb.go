@@ -15,6 +15,7 @@
 package ap2
 
 import (
+	"math"
 	"time"
 
 	"github.com/ravyg/a2a-governance/governance"
@@ -107,7 +108,17 @@ const (
 )
 
 // RiskLevelFromScore maps a numeric risk score to a RiskLevel.
+// Scores are clamped to [0.0, 1.0]; NaN is treated as Critical.
 func RiskLevelFromScore(score float64) RiskLevel {
+	if math.IsNaN(score) {
+		return RiskLevelCritical
+	}
+	// Clamp to valid range.
+	if score < 0 {
+		score = 0
+	} else if score > 1.0 {
+		score = 1.0
+	}
 	switch {
 	case score < 0.25:
 		return RiskLevelLow

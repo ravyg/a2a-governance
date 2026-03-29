@@ -127,7 +127,6 @@ func (cb *CircuitBreaker) effectiveState() BreakerState {
 // If the circuit is open or terminated, the request is rejected without evaluating policies.
 func (cb *CircuitBreaker) Evaluate(ctx context.Context, req *RequestContext) (*EvaluationResult, error) {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
 
 	cb.totalRequests++
 
@@ -141,15 +140,18 @@ func (cb *CircuitBreaker) Evaluate(ctx context.Context, req *RequestContext) (*E
 	switch effective {
 	case StateTerminated:
 		cb.totalBlocked++
+		cb.mu.Unlock()
 		return &EvaluationResult{Allowed: false}, ErrCircuitTerminated
 
 	case StateOpen:
 		cb.totalBlocked++
+		cb.mu.Unlock()
 		return &EvaluationResult{Allowed: false}, ErrCircuitOpen
 
 	case StateHalfOpen:
 		if cb.halfOpenInFlight >= cb.config.HalfOpenMaxRequests {
 			cb.totalBlocked++
+			cb.mu.Unlock()
 			return &EvaluationResult{Allowed: false}, ErrCircuitOpen
 		}
 		cb.halfOpenInFlight++
@@ -164,6 +166,7 @@ func (cb *CircuitBreaker) Evaluate(ctx context.Context, req *RequestContext) (*E
 	for _, p := range cb.config.Policies {
 		eval, err := p.Evaluate(ctx, req)
 		if err != nil {
+			cb.mu.Unlock()
 			return nil, fmt.Errorf("policy %q evaluation failed: %w", p.Name(), err)
 		}
 		result.Evaluations = append(result.Evaluations, eval)
@@ -174,17 +177,27 @@ func (cb *CircuitBreaker) Evaluate(ctx context.Context, req *RequestContext) (*E
 	}
 
 	// Update state based on evaluation.
+	var pendingEscalation *Evaluation
 	if !result.Allowed {
-		cb.trip(ctx, result)
+		pendingEscalation = cb.trip(ctx, result)
 	} else if effective == StateHalfOpen {
 		cb.probeSucceeded(ctx)
+	}
+
+	cb.mu.Unlock()
+
+	// Run escalation handler outside the lock to prevent deadlocks.
+	if pendingEscalation != nil && cb.config.OnEscalation != nil {
+		_ = cb.config.OnEscalation(ctx, cb, pendingEscalation)
 	}
 
 	return result, nil
 }
 
-// trip transitions the circuit to open (or terminated) and triggers escalation.
-func (cb *CircuitBreaker) trip(ctx context.Context, result *EvaluationResult) {
+// trip transitions the circuit to open (or terminated) and returns the
+// evaluation that should be passed to the escalation handler (if any).
+// The caller must invoke the escalation handler outside the lock.
+func (cb *CircuitBreaker) trip(ctx context.Context, result *EvaluationResult) *Evaluation {
 	cb.totalTrips++
 	cb.totalBlocked++
 	cb.consecutiveTrips++
@@ -205,18 +218,13 @@ func (cb *CircuitBreaker) trip(ctx context.Context, result *EvaluationResult) {
 	if cb.config.ConsecutiveFailuresToTerminate > 0 &&
 		cb.consecutiveTrips >= cb.config.ConsecutiveFailuresToTerminate {
 		cb.transition(ctx, StateTerminated, triggerEval)
-		return
+		return triggerEval
 	}
 
 	cb.lastTrippedAt = cb.now()
 	cb.transition(ctx, StateOpen, triggerEval)
 
-	// Trigger human escalation.
-	if cb.config.OnEscalation != nil && triggerEval != nil {
-		// Run escalation outside the lock in production; here we accept the lock
-		// is held for simplicity. Production users should use async escalation.
-		_ = cb.config.OnEscalation(ctx, cb, triggerEval)
-	}
+	return triggerEval
 }
 
 // probeSucceeded records a successful probe in half-open state.

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Command bigcommerce demonstrates a2a-governance in an ecommerce scenario
+// Command demo-commerce demonstrates a2a-governance in an ecommerce scenario
 // with AP2 risk payloads, vendor trust scoring, and multi-policy evaluation.
 package main
 
@@ -64,7 +64,7 @@ func main() {
 	fmt.Println("=== Scenario 1: Normal Purchase ===")
 	result, _ := breaker.Evaluate(ctx, &governance.RequestContext{
 		TaskID:           "order-001",
-		AgentID:          "bigcommerce-shopping-agent",
+		AgentID:          "demo-commerce-shopping-agent",
 		UserID:           "customer-42",
 		TransactionValue: 150.00,
 		Currency:         "USD",
@@ -74,7 +74,7 @@ func main() {
 	fmt.Printf("Result: %s\n", result)
 
 	// Generate AP2 risk payload for the mandate.
-	riskPayload := ap2.NewRiskPayloadFromEvaluation(result, breaker.State(), "bigcommerce-shopping-agent")
+	riskPayload := ap2.NewRiskPayloadFromEvaluation(result, breaker.State(), "demo-commerce-shopping-agent")
 	mandate := ap2.CartMandate{
 		MandateID:   "mandate-001",
 		CartID:      "cart-42",
@@ -88,12 +88,12 @@ func main() {
 	// Record audit event.
 	_ = auditStore.RecordEvent(ctx, &store.GovernanceEvent{
 		ID:               "evt-001",
-		BreakerID:        "bigcommerce-default",
+		BreakerID:        "demo-commerce-default",
 		Timestamp:        time.Now(),
 		State:            breaker.State(),
 		Result:           result,
 		TaskID:           "order-001",
-		AgentID:          "bigcommerce-shopping-agent",
+		AgentID:          "demo-commerce-shopping-agent",
 		TransactionValue: 150.00,
 	})
 
@@ -101,7 +101,7 @@ func main() {
 	fmt.Println("=== Scenario 2: Untrusted Vendor ===")
 	result2, err := breaker.Evaluate(ctx, &governance.RequestContext{
 		TaskID:           "order-002",
-		AgentID:          "bigcommerce-shopping-agent",
+		AgentID:          "demo-commerce-shopping-agent",
 		UserID:           "customer-42",
 		TransactionValue: 200.00,
 		Currency:         "USD",
@@ -117,7 +117,7 @@ func main() {
 	fmt.Println("\n=== Scenario 3: Circuit Open ===")
 	result3, err := breaker.Evaluate(ctx, &governance.RequestContext{
 		TaskID:           "order-003",
-		AgentID:          "bigcommerce-shopping-agent",
+		AgentID:          "demo-commerce-shopping-agent",
 		TransactionValue: 50.00,
 		Timestamp:        time.Now(),
 	})
@@ -133,6 +133,6 @@ func main() {
 		stats.State, stats.TotalRequests, stats.TotalBlocked, stats.TotalTrips)
 
 	// Show audit trail.
-	events, _ := auditStore.ListEvents(ctx, "bigcommerce-default", 10)
+	events, _ := auditStore.ListEvents(ctx, "demo-commerce-default", 10)
 	fmt.Printf("Audit events: %d\n", len(events))
 }

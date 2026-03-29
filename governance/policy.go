@@ -30,7 +30,20 @@ const (
 	ReasonAnomaly         TripReason = "ANOMALY"
 	ReasonVendorTrust     TripReason = "VENDOR_TRUST"
 	ReasonCredentialCheck TripReason = "CREDENTIAL_CHECK"
+	ReasonAuthorityScope  TripReason = "AUTHORITY_SCOPE"
+	ReasonTimeBased       TripReason = "TIME_BASED"
+	ReasonDeviation       TripReason = "DEVIATION"
 	ReasonCustom          TripReason = "CUSTOM"
+)
+
+// EvaluationStatus represents the outcome status of a policy evaluation,
+// supporting the AP2 three-level status model.
+type EvaluationStatus string
+
+const (
+	StatusPass    EvaluationStatus = "PASS"
+	StatusFail    EvaluationStatus = "FAIL"
+	StatusWarning EvaluationStatus = "WARNING"
 )
 
 // RequestContext carries the metadata of an incoming A2A request
@@ -62,7 +75,10 @@ type Evaluation struct {
 	PolicyName string `json:"policy_name"`
 	// Reason is the trip condition type.
 	Reason TripReason `json:"reason"`
-	// Tripped indicates whether this policy's threshold was exceeded.
+	// Status is the three-level evaluation status (PASS, FAIL, WARNING).
+	// WARNING evaluations do not trip the breaker but are recorded.
+	Status EvaluationStatus `json:"status"`
+	// Tripped indicates whether this policy's threshold was exceeded (Status == FAIL).
 	Tripped bool `json:"tripped"`
 	// Score is an optional numeric score (0.0 = no risk, 1.0 = maximum risk).
 	Score float64 `json:"score,omitempty"`

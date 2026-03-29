@@ -23,6 +23,10 @@ import (
 	"github.com/ravyg/a2a-governance/governance"
 )
 
+// maxVelocityTimestamps is the maximum number of timestamps retained to prevent
+// unbounded memory growth. When exceeded, the oldest timestamps are evicted.
+const maxVelocityTimestamps = 100_000
+
 // Velocity trips when the transaction frequency exceeds a rate limit within a window.
 type Velocity struct {
 	// MaxRequests is the maximum number of requests allowed within the window.
@@ -69,10 +73,18 @@ func (p *Velocity) Evaluate(_ context.Context, req *governance.RequestContext) (
 
 	if count > p.MaxRequests {
 		eval.Tripped = true
-		eval.Score = float64(count) / float64(p.MaxRequests)
+		if p.MaxRequests > 0 {
+			eval.Score = float64(count) / float64(p.MaxRequests)
+		} else {
+			eval.Score = 1.0
+		}
 		eval.Message = fmt.Sprintf("request rate %d exceeds limit %d within %s", count, p.MaxRequests, p.Window)
 	} else {
+		// Record timestamp, enforcing a hard cap to prevent unbounded growth.
 		p.timestamps = append(p.timestamps, now)
+		if len(p.timestamps) > maxVelocityTimestamps {
+			p.timestamps = p.timestamps[len(p.timestamps)-maxVelocityTimestamps:]
+		}
 	}
 
 	return eval, nil

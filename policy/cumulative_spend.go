@@ -17,11 +17,16 @@ package policy
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
 	"github.com/ravyg/a2a-governance/governance"
 )
+
+// maxSpendRecords is the maximum number of spend records retained to prevent
+// unbounded memory growth. When exceeded, the oldest records are evicted.
+const maxSpendRecords = 100_000
 
 // CumulativeSpend trips when aggregate spend within a time window exceeds a limit.
 type CumulativeSpend struct {
@@ -44,6 +49,10 @@ var _ governance.Policy = (*CumulativeSpend)(nil)
 func (p *CumulativeSpend) Name() string { return "cumulative_spend" }
 
 func (p *CumulativeSpend) Evaluate(_ context.Context, req *governance.RequestContext) (*governance.Evaluation, error) {
+	if math.IsNaN(req.TransactionValue) || math.IsInf(req.TransactionValue, 0) {
+		return nil, fmt.Errorf("invalid transaction value: %v", req.TransactionValue)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -78,11 +87,18 @@ func (p *CumulativeSpend) Evaluate(_ context.Context, req *governance.RequestCon
 
 	if total > p.MaxSpend {
 		eval.Tripped = true
-		eval.Score = total / p.MaxSpend
+		if p.MaxSpend > 0 {
+			eval.Score = total / p.MaxSpend
+		} else {
+			eval.Score = 1.0
+		}
 		eval.Message = fmt.Sprintf("cumulative spend %.2f exceeds limit %.2f within %s", total, p.MaxSpend, p.Window)
 	} else {
-		// Record this transaction.
+		// Record this transaction, enforcing a hard cap to prevent unbounded growth.
 		p.records = append(p.records, spendRecord{amount: req.TransactionValue, timestamp: now})
+		if len(p.records) > maxSpendRecords {
+			p.records = p.records[len(p.records)-maxSpendRecords:]
+		}
 	}
 
 	return eval, nil

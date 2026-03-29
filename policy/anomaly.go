@@ -58,6 +58,10 @@ func (p *AnomalyDetection) minSamples() int {
 }
 
 func (p *AnomalyDetection) Evaluate(_ context.Context, req *governance.RequestContext) (*governance.Evaluation, error) {
+	if math.IsNaN(req.TransactionValue) || math.IsInf(req.TransactionValue, 0) {
+		return nil, fmt.Errorf("invalid transaction value: %v", req.TransactionValue)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -84,13 +88,22 @@ func (p *AnomalyDetection) Evaluate(_ context.Context, req *governance.RequestCo
 
 	if req.TransactionValue > threshold {
 		eval.Tripped = true
-		eval.Message = fmt.Sprintf(
-			"value %.2f is %.1f std devs from mean %.2f (threshold: %.2f)",
-			req.TransactionValue,
-			(req.TransactionValue-p.mean)/stddev,
-			p.mean,
-			threshold,
-		)
+		if stddev > 0 {
+			eval.Message = fmt.Sprintf(
+				"value %.2f is %.1f std devs from mean %.2f (threshold: %.2f)",
+				req.TransactionValue,
+				(req.TransactionValue-p.mean)/stddev,
+				p.mean,
+				threshold,
+			)
+		} else {
+			eval.Message = fmt.Sprintf(
+				"value %.2f exceeds mean %.2f (threshold: %.2f, zero variance)",
+				req.TransactionValue,
+				p.mean,
+				threshold,
+			)
+		}
 	} else {
 		// Record normal transaction.
 		p.update(req.TransactionValue)

@@ -17,6 +17,7 @@ package policy
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/ravyg/a2a-governance/governance"
 )
@@ -32,6 +33,10 @@ var _ governance.Policy = (*ValueThreshold)(nil)
 func (p *ValueThreshold) Name() string { return "value_threshold" }
 
 func (p *ValueThreshold) Evaluate(_ context.Context, req *governance.RequestContext) (*governance.Evaluation, error) {
+	if math.IsNaN(req.TransactionValue) || math.IsInf(req.TransactionValue, 0) {
+		return nil, fmt.Errorf("invalid transaction value: %v", req.TransactionValue)
+	}
+
 	eval := &governance.Evaluation{
 		PolicyName: p.Name(),
 		Reason:     governance.ReasonValueThreshold,
@@ -41,7 +46,11 @@ func (p *ValueThreshold) Evaluate(_ context.Context, req *governance.RequestCont
 
 	if req.TransactionValue > p.MaxValue {
 		eval.Tripped = true
-		eval.Score = req.TransactionValue / p.MaxValue
+		if p.MaxValue > 0 {
+			eval.Score = req.TransactionValue / p.MaxValue
+		} else {
+			eval.Score = 1.0
+		}
 		eval.Message = fmt.Sprintf("transaction value %.2f exceeds threshold %.2f", req.TransactionValue, p.MaxValue)
 	}
 

@@ -19,12 +19,17 @@ import (
 	"sync"
 )
 
+// DefaultMaxEventsPerBreaker is the default maximum number of governance events
+// retained per breaker to prevent unbounded memory growth.
+const DefaultMaxEventsPerBreaker = 10_000
+
 // MemoryStore is an in-memory implementation of StateStore suitable for
 // testing and single-instance deployments.
 type MemoryStore struct {
-	mu        sync.RWMutex
-	snapshots map[string]*BreakerSnapshot
-	events    map[string][]*GovernanceEvent
+	mu                 sync.RWMutex
+	snapshots          map[string]*BreakerSnapshot
+	events             map[string][]*GovernanceEvent
+	maxEventsPerBreaker int
 }
 
 var _ StateStore = (*MemoryStore)(nil)
@@ -32,8 +37,22 @@ var _ StateStore = (*MemoryStore)(nil)
 // NewMemoryStore creates a new in-memory state store.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		snapshots: make(map[string]*BreakerSnapshot),
-		events:    make(map[string][]*GovernanceEvent),
+		snapshots:          make(map[string]*BreakerSnapshot),
+		events:             make(map[string][]*GovernanceEvent),
+		maxEventsPerBreaker: DefaultMaxEventsPerBreaker,
+	}
+}
+
+// NewMemoryStoreWithLimit creates a new in-memory state store with a custom
+// maximum number of events retained per breaker.
+func NewMemoryStoreWithLimit(maxEventsPerBreaker int) *MemoryStore {
+	if maxEventsPerBreaker <= 0 {
+		maxEventsPerBreaker = DefaultMaxEventsPerBreaker
+	}
+	return &MemoryStore{
+		snapshots:          make(map[string]*BreakerSnapshot),
+		events:             make(map[string][]*GovernanceEvent),
+		maxEventsPerBreaker: maxEventsPerBreaker,
 	}
 }
 
@@ -58,7 +77,12 @@ func (s *MemoryStore) RecordEvent(_ context.Context, event *GovernanceEvent) err
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Prepend for descending timestamp order.
-	s.events[event.BreakerID] = append([]*GovernanceEvent{event}, s.events[event.BreakerID]...)
+	events := append([]*GovernanceEvent{event}, s.events[event.BreakerID]...)
+	// Enforce maximum events per breaker to prevent unbounded memory growth.
+	if len(events) > s.maxEventsPerBreaker {
+		events = events[:s.maxEventsPerBreaker]
+	}
+	s.events[event.BreakerID] = events
 	return nil
 }
 
