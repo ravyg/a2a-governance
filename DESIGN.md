@@ -210,6 +210,59 @@ Implement `store.StateStore` for persistent storage (Redis, PostgreSQL, DynamoDB
 
 Provide a `RequestExtractor` to the interceptor to extract domain-specific metadata from A2A requests.
 
+## Security Review
+
+The following security hardening patterns are applied throughout the codebase. Follow these when contributing new policies or state stores.
+
+### NaN/Inf Input Validation
+
+All value-based policies validate `TransactionValue` at the top of `Evaluate()`:
+
+```go
+if math.IsNaN(req.TransactionValue) || math.IsInf(req.TransactionValue, 0) {
+    return &governance.Evaluation{Tripped: true, Message: "invalid transaction value: NaN or Inf"}, nil
+}
+```
+
+Without this, `NaN > threshold` evaluates to `false` in IEEE 754, silently bypassing the policy.
+
+### Division-by-Zero Guards
+
+Score calculations guard against zero divisors:
+
+```go
+score := req.TransactionValue / p.MaxValue
+if p.MaxValue == 0 {
+    score = 1.0
+}
+```
+
+### Bounded Memory Growth
+
+All stateful policies cap internal data structures:
+
+- `CumulativeSpend`: `maxSpendRecords = 100_000`
+- `Velocity`: `maxVelocityTimestamps = 100_000`
+- `MemoryStore`: `DefaultMaxEventsPerBreaker = 10_000`
+
+When the cap is reached, oldest entries are dropped.
+
+### Deadlock-Safe Escalation
+
+The `CircuitBreaker` releases its mutex **before** calling `OnEscalation` or `OnTransition` handlers. This prevents deadlocks when handlers call back into the breaker:
+
+```go
+cb.mu.Unlock()
+// Run escalation handler outside the lock to prevent deadlocks.
+if cb.onEscalation != nil {
+    _ = cb.onEscalation(ctx, cb, trippedEval)
+}
+```
+
+### RiskLevel Score Handling
+
+`RiskLevelFromScore()` clamps inputs to `[0.0, 1.0]` and treats `NaN` as `CRITICAL`.
+
 ## Dependencies
 
 - `github.com/a2aproject/a2a-go` v0.3.10 — A2A Go SDK (interceptor package only)

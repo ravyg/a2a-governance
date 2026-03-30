@@ -46,6 +46,9 @@ If you experience or witness unacceptable behavior, please open an issue or cont
 Here are some areas where contributions are especially welcome:
 
 #### New Policies
+
+We already ship 7 policies (ValueThreshold, CumulativeSpend, Velocity, AnomalyDetection, VendorTrust, AuthorityScope, TimeBased). Ideas for new ones:
+
 - Geographic restrictions (geo-fencing agent operations)
 - Budget period policies (monthly/quarterly budget enforcement)
 - Merchant category code (MCC) restrictions
@@ -77,7 +80,7 @@ Here are some areas where contributions are especially welcome:
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.26 or later
 - Git
 
 ### Getting Started

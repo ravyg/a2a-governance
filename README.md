@@ -21,7 +21,7 @@ AI agents are increasingly executing real transactions autonomously — purchasi
 go get github.com/ravyg/a2a-governance
 ```
 
-Requires Go 1.24+ and [`a2a-go`](https://github.com/a2aproject/a2a-go) v0.3.10+.
+Requires Go 1.26+ and [`a2a-go`](https://github.com/a2aproject/a2a-go) v0.3.10+.
 
 ## Quick Start
 
@@ -215,7 +215,7 @@ This package has been security-reviewed for:
 - Deadlock-safe escalation handlers (run outside mutex)
 - Division-by-zero guards on score calculations
 
-See the [security review section in DESIGN.md](DESIGN.md) for details.
+See the [Security Review section in DESIGN.md](DESIGN.md#security-review) for detailed patterns to follow when contributing.
 
 ## Roadmap
 
